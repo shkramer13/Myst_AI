@@ -1,0 +1,125 @@
+---
+title: "Myst AI"
+author: "Sam Kramer"
+date: "10/31/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(earth)
+library(splines)
+```
+
+```{r}
+data <- read_csv('myst_ai_load_exercise.csv')
+```
+
+```{r}
+data <- data %>% 
+  rename(datetime = X1) %>% 
+  mutate(date = date(datetime),
+         month = as.factor(month(datetime)),
+         hour = hour(datetime),
+         hour = as.factor(hour),
+         weekday = wday(datetime, label = TRUE, abbr = TRUE),
+         weekday = factor(weekday, ordered = FALSE))
+```
+
+```{r}
+testSize = 1.0 / 3.0
+validateSize = 1.0 / 3.0
+
+testStart = round((1 - testSize) * nrow(data))
+test = slice(data, testStart:nrow(data))
+
+validateStart = round((1 - validateSize) * testStart)
+validate = slice(data, validateStart:(testStart - 1))
+
+train = slice(data, 1:(validateStart - 1))
+
+print(stringr::str_c("data start: ", as.character(min(data$datetime))))
+print(stringr::str_c("train start: ", as.character(min(train$datetime))))
+print(stringr::str_c("train end: ", as.character(max(train$datetime))))
+print(stringr::str_c("validate start: ",  as.character(min(validate$datetime))))
+print(stringr::str_c("validate end: ",  as.character(max(validate$datetime))))
+print(stringr::str_c("test start: ",  as.character(min(test$datetime))))
+print(stringr::str_c("test end: ",  as.character(min(test$datetime))))
+print(stringr::str_c("data end: ",  as.character(min(test$datetime))))
+```
+
+```{r}
+mod1_train <- train %>% 
+  filter(datetime <= ymd(20140131))
+
+mod1_test <- train %>% 
+  filter(datetime >= ymd(20140201),
+         datetime < ymd(20140301))
+
+mod1 <- earth(load_1 ~ temp + hour + weekday, data = mod1_train)
+
+# summary(mod1)
+
+mod1_train %>% 
+  mutate(pred = predict(mod1, mod1_train)) %>% 
+  ggplot(aes(x = datetime)) + 
+  geom_line(aes(y = load_1), color = "blue") + 
+  geom_line(aes(y = pred), color = "red") + 
+  labs(title = "Mod1 Train")
+
+mod1_test %>% 
+  mutate(pred = predict(mod1, mod1_test)) %>% 
+  ggplot(aes(x = datetime)) + 
+  geom_line(aes(y = load_1), color = "blue") + 
+  geom_line(aes(y = pred), color = "red") +
+  labs(title = "Mod1 Test")
+```
+
+```{r}
+train %>% 
+  filter(load_1 == min(load_1))
+```
+
+
+```{r}
+mod2_train <- train %>% 
+  filter(datetime <= ymd(20140531))
+
+mod2_test <- train %>% 
+  filter(datetime >= ymd(20140601),
+         datetime < ymd(20140701))
+
+mod2 <- lm(load_1 ~ bs(temp, knots = c(17.5), degree = 1) + weekday + hour, 
+           data = mod2_train)
+
+# summary(mod2)
+
+mod2_train %>% 
+  mutate(pred = predict(mod2, mod2_train)) %>% 
+  ggplot(aes(x = datetime)) + 
+  geom_line(aes(y = load_1), color = "blue") + 
+  geom_line(aes(y = pred), color = "red") + 
+  labs(title = "Mod2 Train")
+
+mod2_test %>% 
+  mutate(pred = predict(mod2, mod2_test)) %>% 
+  ggplot(aes(x = datetime)) + 
+  geom_line(aes(y = load_1), color = "blue") + 
+  geom_line(aes(y = pred), color = "red") +
+  labs(title = "Mod2 Test")
+```
+
+
+```{r fig.height=8, fig.width=14}
+mod2_train %>% 
+  mutate(pred = predict(mod2, mod2_train)) %>% 
+  filter(as.numeric(hour) < 6) %>% 
+  ggplot(aes(x = temp)) +
+  geom_point(aes(y = load_1, color = hour), alpha = 0.4) + 
+  geom_line(aes(y = pred, color = hour)) + 
+  facet_wrap(~weekday)
+```
+
